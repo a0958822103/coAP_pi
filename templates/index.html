@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 電池監控系統</title>
+    <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+</head>
+<body>
+    <h2 style="text-align: center;">即時電池電壓監控</h2>
+    <div style="width: 50%; margin: auto;">
+        <canvas id="batteryChart"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('batteryChart').getContext('2d');
+        const dataPoints = [];
+        const labels = [];
+
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '電池電壓 (V)',
+                    data: dataPoints,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: false, min: 3.0, max: 4.5 }
+                }
+            }
+        });
+
+        // 連接到 Raspberry Pi 的 WebSocket
+        const socket = io();
+
+        fetch('/get_history')
+            .then(response => response.json())
+            .then(data => {
+                data.forEach(item => {
+                    labels.push(item.timestamp);
+                    dataPoints.push(parseFloat(item.value));
+        });
+        chart.update(); // 畫出歷史曲線
+        });
+
+        socket.on('new_data', function(msg) {
+            const now = new Date().toLocaleTimeString();
+            
+            // 更新圖表數據
+            if (labels.length > 20) { // 只保留最近 20 筆
+                labels.shift();
+                dataPoints.shift();
+            }
+            
+            labels.push(now);
+            dataPoints.push(msg.value);
+            chart.update();
+        });
+    </script>
+</body>
+</html>

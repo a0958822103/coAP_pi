@@ -1,0 +1,13 @@
+VERSION ""
+
+NS_ :
+BS_ :
+
+BU_: RPi_Server ESP32_Node
+
+BO_ 100 BatteryData: 10 ESP32_Node
+ SG_ Voltage_01 : 0|16@1+ (1,0) [0|65535] "mV" RPi_Server
+ SG_ Current_01 : 16|16@1- (1,0) [-32768|32767] "mA" RPi_Server
+ SG_ Status : 32|8@1+ (1,0) [0|1] "" RPi_Server
+ SG_ Temp : 40|8@1- (1,0) [-128|127] "degC" RPi_Server
+ SG_ Timestamp : 48|32@1+ (1,0) [0|4294967295] "s" RPi_Server

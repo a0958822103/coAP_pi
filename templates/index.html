@@ -6,232 +6,387 @@
     <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; }
-        .container { max-width: 1000px; margin: auto; }
+        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+        h1 { margin-top: 0; margin-bottom: 20px; }
+        #alert-banner { background-color: #ff4d4d; color: white; padding: 15px; border-radius: 8px; text-align: center; display: none; margin-bottom: 20px; font-weight: bold; flex-shrink: 0; }
         
-        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        
-        #alert-banner { background-color: #ff4d4d; color: white; padding: 15px; border-radius: 8px; text-align: center; display: none; margin-bottom: 20px; font-weight: bold; }
-        
-        /* 設備狀態標籤 */
-        .device-item { display: inline-block; margin: 5px; padding: 10px 15px; border-radius: 20px; font-size: 0.9em; background: #eee; }
-        .status-online { background-color: #d4edda; color: #155724; }
-        .status-pending { background-color: #fff3cd; color: #856404; animation: pulse 1s infinite;}
-        .status-verifying { background-color: #e2e3e5; color: #383d41; }
-        .status-stopped { background-color: #f1f1f1; color: #6c757d; }
-        .status-error { background-color: #f8d7da; color: #721c24; animation: blink 1s infinite; }
+        .main-layout {
+            display: flex;            /* 啟用彈性盒子 (左右排版) */
+            gap: 18px;                /* 左右兩側的間距 */
+            flex: 1;                  /* 讓版面填滿螢幕剩餘高度 */
+            min-height: 0;            /* 防止內部元素把畫面撐破產生全網頁滾動 */
+        }
 
-        @keyframes blink { 50% { opacity: 0.5; } }
-        @keyframes pulse { 50% { transform: scale(1.05); } }
+        /* --- 左側：設備卡片區 (固定寬度 + 內部捲動) --- */
+        .left-panel {
+            flex: 0 0 400px;          /* 寬度固定為 450px (您可依喜好調整) */
+            display: flex;
+            flex-direction: column;
+            background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .scrollable-container {
+            flex: 1;                  /* 填滿左側剩下的高度 */
+            overflow-y: auto;         /* 啟用垂直 Scroll bar (捲動條) */
+            padding-right: 5px;       /* 預留滾動條空間，避免字被擋住 */
+        }
+        
+        /* 美化 Scroll bar (針對 Webkit 瀏覽器如 Chrome/Edge) */
+        .scrollable-container::-webkit-scrollbar { width: 6px; }
+        .scrollable-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
 
-        /* 即時數據儀表板 - 加入可點擊與互動效果 */
-        .dashboard { display: flex; justify-content: space-between; margin-top: 15px; }
+        /* --- 網格佈局：控制卡片排列 --- */
+        .card-grid-2col {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 核心！強制 2 張卡片為 1 列 (1fr 代表平分可用寬度) */
+            gap: 15px;                             /* 卡片之間的間距 */
+        }
+
+        /* --- 右側：詳細數據與圖表區 (佔據剩餘最大空間) --- */
+        .right-panel {
+            flex: 1;                  /* 核心！自動佔據右側所有剩餘的寬度 */
+            display: flex; 
+            flex-direction: column;
+            background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        #detail-view { display: none; flex-direction: column; height: 100%; } /* 預設隱藏圖表 */
+        #detail-view.active { display: flex; } /* 點擊卡片時觸發顯示 */
+        
+        #empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; }
+        
+        .chart-container {
+            position: relative;       /* 讓 Chart.js 正確縮放的關鍵 */
+            flex: 1;                  /* 圖表填滿右側剩餘高度 */
+            min-height: 0;
+            margin-top: 15px;
+        }
+        
+
+        /* 2. 卡片視覺樣式 */
+        .device-card {
+            background: #fff; border-radius: 8px; padding: 12px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; 
+            border-top: 5px solid #ccc; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;
+            transition: transform 0.1s, border-color 0.2s;
+            font-size: 0.9em; /* 卡片字體稍小以適應雙排 */
+        }
+        .device-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .device-card.active-card { border-top-color: #007bff; background-color: #f8fbff; outline: 2px solid #007bff; }
+        
+        .card-online { border-top-color: #28a745; }
+        .card-pending { border-top-color: #ffc107; animation: pulse 1.5s infinite; }
+        .card-error { border-top-color: #dc3545; animation: blink 1s infinite; }
+        
+        .card-header { font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; display: flex; justify-content: space-between; font-size: 1.05em;}
+        .card-row { display: flex; justify-content: space-between; margin-bottom: 4px; color: #555; }
+        .card-val { font-weight: bold; color: #000; }
+
+        @keyframes blink { 50% { opacity: 0.6; } }
+        @keyframes pulse { 50% { box-shadow: 0 0 8px rgba(255, 193, 7, 0.4); } }
+
+        /* 3. 即時數據儀表板 */
+        .dashboard { display: flex; justify-content: space-between; margin-top: 10px; gap: 15px;}
         .data-box { 
-            background: #e9ecef; 
-            padding: 15px; 
-            border-radius: 8px; 
-            text-align: center; 
-            flex: 1; 
-            margin: 0 10px; 
-            cursor: pointer; /* 滑鼠移過去變手指 */
-            transition: all 0.3s ease;
-            border: 2px solid transparent; /* 預留邊框空間 */
+            background: #e9ecef; padding: 15px; border-radius: 8px; text-align: center; 
+            flex: 1; cursor: pointer; border: 2px solid transparent; transition: 0.2s;
         }
-        .data-box:hover {
-            transform: translateY(-3px); /* 懸浮效果 */
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        /* 針對被選中的卡片加上高亮邊框 */
+        .data-box:hover { filter: brightness(0.95); }
         .data-box.active-volt { background: #e0f0ff; border-color: #007bff; }
         .data-box.active-curr { background: #ffe0e3; border-color: #dc3545; }
         .data-box.active-temp { background: #e2f5e9; border-color: #28a745; }
+        .data-value { font-size: 1.8em; font-weight: bold; margin-top: 5px;}
         
-        .data-value { font-size: 1.5em; font-weight: bold; }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; }
+        .close-btn { background: #6c757d; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; transition: 0.2s;}
+        .close-btn:hover { background: #5a6268; }
+
+        .switch-container { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #eee; }
+        .switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background-color: #28a745; } /* 開啟時顯示綠色 */
+        input:checked + .slider:before { transform: translateX(16px); }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>遠端車載訊號監控</h1>
+<h1>多設備電池訊號監控</h1>
 
-    <div id="alert-banner">
-        <span id="alert-msg">警報：系統已暫停！</span>
-        <button onclick="resetSystem()" style="margin-left:15px; padding:5px; cursor:pointer;">重置系統</button>
-    </div>
+<div id="alert-banner">
+    <span id="alert-msg">警報：系統已暫停！</span>
+    <button onclick="resetSystem()" style="margin-left:15px; padding:5px; cursor:pointer;">重置系統</button>
+</div>
 
-    <div class="panel">
-        <h3>設備授權狀態</h3>
-        <div id="device-list">等待連線請求...</div>
-    </div>
-
-    <div class="panel">
-        <h3>遠端即時數據 </h3>
-        <div class="dashboard">
-            <div class="data-box active-volt" id="box-volt" onclick="switchChart('volt')">
-                <div>電壓 (V)</div>
-                <div class="data-value" id="val-volt" style="color:#007bff;">--</div>
-            </div>
-            <div class="data-box" id="box-curr" onclick="switchChart('curr')">
-                <div>電流 (A)</div>
-                <div class="data-value" id="val-curr" style="color:#dc3545;">--</div>
-            </div>
-            <div class="data-box" id="box-temp" onclick="switchChart('temp')">
-                <div>溫度 (°C)</div>
-                <div class="data-value" id="val-temp" style="color:#28a745;">--</div>
-            </div>
-            <div class="data-box" style="cursor: default;"> <div>設備狀態</div>
-                <div class="data-value" id="val-status" style="color:#6c757d;">--</div>
+<div class="main-layout">
+    
+    <div class="left-panel">
+        <h3 style="margin-top: 0;">設備列表</h3>
+        
+        <div class="scrollable-container">
+            <div id="card-container" class="card-grid-2col">
+                <div style="color: #888; padding: 10px;">等待設備連線中...</div>
             </div>
         </div>
     </div>
 
-    <div class="panel">
-        <canvas id="multiChart"></canvas>
+    <div class="right-panel">
+        
+        <div id="empty-state">
+            <h2>點選卡片以查看詳細數據與圖表</h2>
+        </div>
+
+        <div id="detail-view">
+            <div class="header-flex">
+                <h2 style="margin: 0;">設備 <span id="current-view-title" style="color:#007bff;">--</span></h2>
+                <button class="close-btn" onclick="closeDetailView()">關閉圖表</button>
+            </div>
+            
+            <div class="dashboard">
+                <div class="data-box active-volt" id="box-volt" onclick="switchMetric('volt')">
+                    <div>電壓 (V)</div>
+                    <div class="data-value" id="val-volt" style="color:#007bff;">--</div>
+                </div>
+                <div class="data-box" id="box-curr" onclick="switchMetric('curr')">
+                    <div>電流 (A)</div>
+                    <div class="data-value" id="val-curr" style="color:#dc3545;">--</div>
+                </div>
+                <div class="data-box" id="box-temp" onclick="switchMetric('temp')">
+                    <div>溫度 (°C)</div>
+                    <div class="data-value" id="val-temp" style="color:#28a745;">--</div>
+                </div>
+                <div class="data-box" style="cursor: default;">
+                    <div>設備狀態</div>
+                    <div class="data-value" id="val-status" style="color:#6c757d; font-size: 1.4em; margin-top: 10px;">--</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="multiChart"></canvas>
+            </div>
+        </div>
+        
     </div>
+
 </div>
-
 <script>
-    // --- 0. 資料背景儲存庫 (分離資料與顯示) ---
-    const dataStore = {
-        labels: [],
-        volt: [],
-        curr: [],
-        temp: []
-    };
+    const deviceDataStore = {}; 
+    let currentViewIp = null;   
+    let currentMetric = 'volt'; 
+    let knownDevices = {}; 
 
-    let currentMetric = 'volt'; // 預設顯示電壓
-
-    // --- 1. 圖表初始化 (單一 Y 軸與單一 Dataset) ---
+    // 圖表初始化 
     const ctx = document.getElementById('multiChart').getContext('2d');
     const multiChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: dataStore.labels,
-            datasets: [{
-                label: '電壓 (V)',
-                data: dataStore.volt,
-                borderColor: '#007bff',
-                backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            scales: {
-                y: { type: 'linear', display: true, title: { display: true, text: '數值' } }
-            }
+        data: { labels: [], datasets: [{ label: '電壓 (V)', data: [], borderColor: '#007bff', backgroundColor: 'rgba(0, 123, 255, 0.1)', fill: true, tension: 0.3 }] },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, // 讓圖表自動填滿 flex 容器高度的關鍵
+            scales: { y: { type: 'linear', display: true } },
+            animation: { duration: 0 } // 關閉動畫減少高頻率更新時的卡頓
         }
     });
 
-    // --- 2. 切換圖表函數 (核心) ---
-    function switchChart(metric) {
+    // 將 IP 轉為 HTML ID
+    function safeId(ip) { return ip.replace(/\./g, '-'); }
+
+ // 渲染左側卡片
+    function renderCards() {
+        const container = document.getElementById('card-container');
+        if (Object.keys(knownDevices).length === 0) return;
+
+        container.innerHTML = ''; 
+        for (let ip in knownDevices) {
+            const status = knownDevices[ip].status;
+            let statusClass = 'card-error'; let statusText = 'ERROR'; let statusColor = '#dc3545';
+            if (status === 'online') { statusClass = 'card-online'; statusText = 'ONLINE'; statusColor = '#28a745'; }
+            if (status === 'pending') { statusClass = 'card-pending'; statusText = 'PENDING'; statusColor = '#ffc107'; }
+            if (status === 'stopped') { statusClass = ''; statusText = 'STOPPED'; statusColor = '#6c757d'; }
+
+            const isActive = (ip === currentViewIp) ? 'active-card' : '';
+            const data = deviceDataStore[ip] || { volt: ['--'], curr: ['--'], temp: ['--'], status: '-' };
+            const lastIdx = Math.max(0, data.volt.length - 1);
+
+            // 判斷目前最後一筆狀態，決定開關是否預設為 ON (假設 '正常' 代表充電中/開啟)
+            const isChecked = (data.status === '正常') ? 'checked' : '';
+
+            // 判斷目前是要顯示「斷開」還是「重連」按鈕
+            const btnText = (status === 'stopped') ? '▶️ 喚醒' : '⏹️ 斷開';
+            const btnAction = (status === 'stopped') ? 'start' : 'stop';
+
+ container.innerHTML += `
+                <div class="device-card ${statusClass} ${isActive}" id="card-${safeId(ip)}" onclick="selectDevice('${ip}')">
+                    <div class="card-header">
+                        <span>${safeId(ip)}</span> 
+                        <div>
+                            <span style="color: ${statusColor}; margin-right: 8px;" title="${status}">${statusText}</span>
+                            <button onclick="toggleConnection(event, '${ip}', '${btnAction}')" 
+                                    style="font-size: 0.8em; padding: 2px 6px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: white;">
+                                ${btnText}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-row"><span>電壓:</span> <span class="card-val" id="c-volt-${safeId(ip)}">${data.volt[lastIdx]}</span></div>
+                    <div class="card-row"><span>電流:</span> <span class="card-val" id="c-curr-${safeId(ip)}">${data.curr[lastIdx]}</span></div>
+                    <div class="card-row"><span>溫度:</span> <span class="card-val" id="c-temp-${safeId(ip)}">${data.temp[lastIdx]}</span></div>
+                    
+                    <div class="switch-container">
+                        <span style="color: #555; font-size: 0.9em;">充電控制</span>
+                        <label class="switch" onclick="event.stopPropagation()">
+                            <input type="checkbox" id="toggle-${safeId(ip)}" ${isChecked} onchange="toggleCharge('${ip}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // 處理斷開與重連的函數
+    function toggleConnection(event, ip, action) {
+        event.stopPropagation(); // 避免點擊按鈕時觸發卡片的詳細圖表
+        
+        const actionName = (action === 'stop') ? '安全斷開' : '重新喚醒';
+        if(confirm(`確定要 ${actionName} 設備 ${ip} 嗎？`)) {
+            fetch(`/set_device_state?ip=${ip}&state=${action}`)
+                .then(response => {
+                    if (!response.ok) alert("指令發送失敗");
+                });
+        }
+    }
+
+    // 發送開關切換指令給後端
+    function toggleCharge(ip, isTurnedOn) {
+        const state = isTurnedOn ? 1 : 0;
+        console.log(`準備將設備 ${ip} 狀態切換為: ${state}`);
+        
+        // 呼叫 Flask 後端的 API (待後端實作)
+        fetch(`/toggle_charge?ip=${ip}&state=${state}`)
+            .then(response => {
+                if (!response.ok) throw new Error("網路回應錯誤");
+                console.log(`指令已發送至後端: ${ip} -> ${state}`);
+            })
+            .catch(error => {
+                console.error("指令發送失敗:", error);
+                document.getElementById(`toggle-${safeId(ip)}`).checked = !isTurnedOn;
+                alert("控制指令發送失敗，請檢查連線。");
+            });
+    }
+
+    // 點擊卡片切換畫面
+    function selectDevice(ip) {
+        currentViewIp = ip;
+        document.getElementById('current-view-title').innerText = ip;
+        
+        // 隱藏右側的提示，顯示真實數據面板
+        document.getElementById('empty-state').style.display = 'none';
+        document.getElementById('detail-view').classList.add('active');
+        
+        renderCards(); 
+        updateDashboardUI();
+    }
+
+    // 關閉右側視圖
+    function closeDetailView() {
+        currentViewIp = null;
+        document.getElementById('empty-state').style.display = 'flex';
+        document.getElementById('detail-view').classList.remove('active');
+        renderCards(); 
+    }
+
+    // 切換電壓/電流/溫度圖表
+    function switchMetric(metric) {
         currentMetric = metric;
         const dataset = multiChart.data.datasets[0];
 
-        // 清除所有卡片的活躍狀態 (邊框與背景)
         document.getElementById('box-volt').classList.remove('active-volt');
         document.getElementById('box-curr').classList.remove('active-curr');
         document.getElementById('box-temp').classList.remove('active-temp');
 
-        // 根據選擇的卡片，切換圖表的資料、標籤、顏色，並加上卡片的高亮效果
         if (metric === 'volt') {
             document.getElementById('box-volt').classList.add('active-volt');
-            dataset.label = '電壓 (V)';
-            dataset.data = dataStore.volt; // 指向電壓陣列
-            dataset.borderColor = '#007bff';
-            dataset.backgroundColor = 'rgba(0, 123, 255, 0.1)';
-        } 
-        else if (metric === 'curr') {
+            dataset.label = '電壓 (V)'; dataset.borderColor = '#007bff'; dataset.backgroundColor = 'rgba(0, 123, 255, 0.1)';
+        } else if (metric === 'curr') {
             document.getElementById('box-curr').classList.add('active-curr');
-            dataset.label = '電流 (A)';
-            dataset.data = dataStore.curr; // 指向電流陣列
-            dataset.borderColor = '#dc3545';
-            dataset.backgroundColor = 'rgba(220, 53, 69, 0.1)';
-        } 
-        else if (metric === 'temp') {
+            dataset.label = '電流 (A)'; dataset.borderColor = '#dc3545'; dataset.backgroundColor = 'rgba(220, 53, 69, 0.1)';
+        } else if (metric === 'temp') {
             document.getElementById('box-temp').classList.add('active-temp');
-            dataset.label = '溫度 (°C)';
-            dataset.data = dataStore.temp; // 指向溫度陣列
-            dataset.borderColor = '#28a745';
-            dataset.backgroundColor = 'rgba(40, 167, 69, 0.1)';
+            dataset.label = '溫度 (°C)'; dataset.borderColor = '#28a745'; dataset.backgroundColor = 'rgba(40, 167, 69, 0.1)';
         }
-
-        multiChart.update(); // 重新渲染圖表
+        updateDashboardUI();
     }
 
+    function updateDashboardUI() {
+        if (!currentViewIp || !deviceDataStore[currentViewIp]) return;
+        const data = deviceDataStore[currentViewIp];
+        const lastIdx = data.volt.length - 1;
+        
+        if (lastIdx >= 0) {
+            document.getElementById('val-volt').innerText = data.volt[lastIdx];
+            document.getElementById('val-curr').innerText = data.curr[lastIdx];
+            document.getElementById('val-temp').innerText = data.temp[lastIdx];
+            document.getElementById('val-status').innerText = data.status;
+        }
+
+        multiChart.data.labels = data.labels;
+        multiChart.data.datasets[0].data = data[currentMetric];
+        multiChart.update();
+    }
+
+    // Socket.io 通訊
     const socket = io();
 
-    // --- 3. 接收即時 DBC 數據 ---
+    socket.on('device_list_update', function(devices) {
+        knownDevices = devices;
+        renderCards();
+    });
+
     socket.on('new_data', function(msg) {
+        const ip = msg.ip;
         const signals = msg.data;
         
-        // 數值轉換 (mV -> V, mA -> A)
+        if (!deviceDataStore[ip]) deviceDataStore[ip] = { labels: [], volt: [], curr: [], temp: [], status: '-' };
+
+        const store = deviceDataStore[ip];
         const v = (signals.Voltage_01 / 1000.0).toFixed(2);
         const a = (signals.Current_01 / 1000.0).toFixed(2);
         const t = signals.Temp;
-        const s = signals.Status === 1 ? '正常' : '異常';
+        const s = signals.Status === 1 ? '亮' : '滅';
 
-        // 更新頂部儀表板數字
-        document.getElementById('val-volt').innerText = v;
-        document.getElementById('val-curr').innerText = a;
-        document.getElementById('val-temp').innerText = t;
-        document.getElementById('val-status').innerText = s;
-
-        // 推送新資料到背景陣列
-        if (dataStore.labels.length > 30) {
-            dataStore.labels.shift();
-            dataStore.volt.shift();
-            dataStore.curr.shift();
-            dataStore.temp.shift();
+        if (store.labels.length > 30) {
+            store.labels.shift(); store.volt.shift(); store.curr.shift(); store.temp.shift();
         }
-        dataStore.labels.push(msg.timestamp);
-        dataStore.volt.push(v);
-        dataStore.curr.push(a);
-        dataStore.temp.push(t);
+        store.labels.push(msg.timestamp);
+        store.volt.push(v);
+        store.curr.push(a);
+        store.temp.push(t);
+        store.status = s;
 
-        // Chart.js 會自動追蹤 dataset.data 綁定的那個陣列，直接 update 即可
-        multiChart.update();
+        const sid = safeId(ip);
+        if (document.getElementById(`c-volt-${sid}`)) {
+            document.getElementById(`c-volt-${sid}`).innerText = v;
+            document.getElementById(`c-curr-${sid}`).innerText = a;
+            document.getElementById(`c-temp-${sid}`).innerText = t;
+
+            const toggleElement = document.getElementById(`toggle-${sid}`);
+            if (toggleElement) {
+                toggleElement.checked = (signals.Status === 1);
+            }
+        }
+
+        if (ip === currentViewIp) updateDashboardUI();
     });
 
-    // --- 4. 抓取歷史與重置 ---
-    fetch('/get_history').then(res => res.json()).then(data => {
-        data.forEach(row => {
-            dataStore.labels.push(row.timestamp);
-            dataStore.volt.push((row.Volt_mV / 1000.0).toFixed(2));
-            dataStore.curr.push((row.Curr_mA / 1000.0).toFixed(2));
-            dataStore.temp.push(row.Temp_C);
-        });
-        multiChart.update();
-    });
-
-    // --- 彈窗與其餘邏輯 (保持不變) ---
     socket.on('auth_request', function(data) {
-        if (confirm(`【新連線】是否同意設備 ${data.ip} 傳輸 DBC 數據？`)) {
-            fetch(`/approve_connection?ip=${data.ip}&choice=yes`);
-        } else {
-            fetch(`/approve_connection?ip=${data.ip}&choice=no`);
-        }
+        if (confirm(`【新連線】是否同意設備 ${data.ip} 傳輸 DBC 數據？`)) fetch(`/approve_connection?ip=${data.ip}&choice=yes`);
+        else fetch(`/approve_connection?ip=${data.ip}&choice=no`);
     });
 
     socket.on('check_disconnect', function(data) {
-        if (confirm(`【超時警報】設備 ${data.ip} 已超過 15 秒未更新。\n這是否為「正常關機」？(按取消將停止全系統)`)) {
-            fetch(`/confirm_disconnect?ip=${data.ip}&normal=yes`);
-        } else {
-            fetch(`/confirm_disconnect?ip=${data.ip}&normal=no`);
-        }
-    });
-
-    socket.on('device_list_update', function(devices) {
-        const listDiv = document.getElementById('device-list');
-        listDiv.innerHTML = '';
-        for (let ip in devices) {
-            const status = devices[ip].status;
-            let statusText = status.toUpperCase();
-            if(status === 'pending') statusText = '等待同意';
-            if(status === 'online') statusText = '連線中';
-            if(status === 'error') statusText = '異常';
-            listDiv.innerHTML += `<div class="device-item status-${status}"><strong>${ip}</strong>: ${statusText}</div>`;
-        }
+        if (confirm(`【超時警報】設備 ${data.ip} 超時未更新。\n這是否為「正常關機」?`)) fetch(`/confirm_disconnect?ip=${data.ip}&normal=yes`);
+        else fetch(`/confirm_disconnect?ip=${data.ip}&normal=no`);
     });
 
     socket.on('system_alert', function(data) {
@@ -240,11 +395,8 @@
     });
 
     function resetSystem() {
-        if (confirm("這將清除所有狀態並允許設備重新連線，確定？")) {
-            fetch('/reset').then(() => location.reload());
-        }
+        if (confirm("這將清除所有狀態並允許設備重新連線，確定？")) fetch('/reset').then(() => location.reload());
     }
 </script>
-
 </body>
 </html>

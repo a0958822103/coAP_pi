@@ -1,4 +1,5 @@
 import asyncio
+import socket
 import threading
 import time
 import csv
@@ -44,7 +45,7 @@ class HeartbeatResource(resource.ObservableResource):
 
     def notify_loop(self):
         self.updated_state()
-        threading.Timer(30, self.notify_loop).start()
+        threading.Timer(10, self.notify_loop).start()
 
     async def render_get(self, request):
         return aiocoap.Message(payload=self.payload)
@@ -115,6 +116,29 @@ class BatteryResource(resource.Resource):
             print(f"[錯誤] DBC 解碼失敗: {e}")
             return aiocoap.Message(code=aiocoap.Code.BAD_REQUEST, payload=b"DECODE_ERROR")
 
+class ThinkPowerCharger:
+    def __init__(self, ip, port=5025):
+        self.ip = ip
+        self.port = port
+
+    def query(self, cmd):
+        response = None
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                s.connect((self.ip, self.port))
+                full_cmd = cmd + "\n"
+                s.sendall(full_cmd.encode('ascii'))
+                time.sleep(0.2) 
+                response = s.recv(1024).decode('ascii').strip()
+        except Exception as e:
+            print(f"[充放電機] 指令 [{cmd}] 執行失敗: {e}")
+            response = "ERROR"
+        return response
+
+# 初始化充放電機 (請確認 IP 正確)
+charger = ThinkPowerCharger(ip="172.22.13.214", port=5025)
+
 #  Flask 路由：互動授權 
 @app.route('/approve_connection')
 def approve_connection():
@@ -161,6 +185,12 @@ def get_history():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@socketio.on('connect')
+def handle_web_connect():
+    # 針對剛連進來的網頁，立刻發送目前的設備清單與狀態
+    socketio.emit('device_list_update', devices, to=request.sid)
+    print(f"[網頁端] 已連線，已同步目前設備清單。")
 
 @app.route('/toggle_charge')
 def toggle_charge():
@@ -235,6 +265,38 @@ def set_device_state():
         return jsonify({"status": "success"}), 200
         
     return jsonify({"status": "error", "msg": "設備不存在"}), 404
+
+@app.route('/charger')
+def charger_page():
+    """負責載入充放電機的專屬控制面板網頁"""
+    return render_template('charger.html')
+
+@app.route('/api/charger/data')
+def get_charger_data():
+    """提供前端 Ajax 抓取即時數據的 API"""
+    volt = charger.query("MEAS:VOLT?")
+    curr = charger.query("MEAS:CURR?")
+    
+    # 簡單防錯機制
+    if volt == "ERROR" or curr == "ERROR":
+        return jsonify({"status": "offline", "volt": "--", "curr": "--"}), 503
+        
+    return jsonify({
+        "status": "online",
+        "volt": volt,
+        "curr": curr
+    })
+
+@app.route('/api/charger/cmd')
+def send_charger_cmd():
+    """提供前端發送任意控制指令的 API"""
+    cmd = request.args.get('cmd')
+    if not cmd:
+        return jsonify({"error": "No command provided"}), 400
+        
+    res = charger.query(cmd)
+    return jsonify({"response": res})
+
 
 # ESP32生存監控
 def watchdog():

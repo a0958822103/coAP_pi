@@ -6,78 +6,66 @@
     <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+
+        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+        
+        /* 導覽列樣式 */
+        .navbar {
+            background-color: #343a40;
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            flex-shrink: 0; 
+        }
+        .navbar-brand { font-size: 1.5em; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .nav-links { display: flex; gap: 15px; }
+        .nav-links a {
+            color: #adb5bd;
+            text-decoration: none;
+            font-size: 1.1em;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .nav-links a:hover { color: white; background-color: #495057; }
+        .nav-links a.active { color: white; background-color: #007bff; } 
+
+        /*主內容容器 */
+        .main-container {
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; 
+        }
+
+        
         h1 { margin-top: 0; margin-bottom: 20px; }
         #alert-banner { background-color: #ff4d4d; color: white; padding: 15px; border-radius: 8px; text-align: center; display: none; margin-bottom: 20px; font-weight: bold; flex-shrink: 0; }
         
-        .main-layout {
-            display: flex;            /* 啟用彈性盒子 (左右排版) */
-            gap: 18px;                /* 左右兩側的間距 */
-            flex: 1;                  /* 讓版面填滿螢幕剩餘高度 */
-            min-height: 0;            /* 防止內部元素把畫面撐破產生全網頁滾動 */
-        }
-
-        /* --- 左側：設備卡片區 (固定寬度 + 內部捲動) --- */
-        .left-panel {
-            flex: 0 0 400px;          /* 寬度固定為 450px (您可依喜好調整) */
-            display: flex;
-            flex-direction: column;
-            background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .scrollable-container {
-            flex: 1;                  /* 填滿左側剩下的高度 */
-            overflow-y: auto;         /* 啟用垂直 Scroll bar (捲動條) */
-            padding-right: 5px;       /* 預留滾動條空間，避免字被擋住 */
-        }
-        
-        /* 美化 Scroll bar (針對 Webkit 瀏覽器如 Chrome/Edge) */
+        .main-layout { display: flex; gap: 18px; flex: 1; min-height: 0; }
+        .left-panel { flex: 0 0 400px; display: flex; flex-direction: column; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .scrollable-container { flex: 1; overflow-y: auto; padding-right: 5px; }
         .scrollable-container::-webkit-scrollbar { width: 6px; }
         .scrollable-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .card-grid-2col { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
 
-        /* --- 網格佈局：控制卡片排列 --- */
-        .card-grid-2col {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr); /* 核心！強制 2 張卡片為 1 列 (1fr 代表平分可用寬度) */
-            gap: 15px;                             /* 卡片之間的間距 */
-        }
-
-        /* --- 右側：詳細數據與圖表區 (佔據剩餘最大空間) --- */
-        .right-panel {
-            flex: 1;                  /* 核心！自動佔據右側所有剩餘的寬度 */
-            display: flex; 
-            flex-direction: column;
-            background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        #detail-view { display: none; flex-direction: column; height: 100%; } /* 預設隱藏圖表 */
-        #detail-view.active { display: flex; } /* 點擊卡片時觸發顯示 */
-        
+        .right-panel { flex: 1; display: flex; flex-direction: column; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #detail-view { display: none; flex-direction: column; height: 100%; } 
+        #detail-view.active { display: flex; } 
         #empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; }
+        .chart-container { position: relative; flex: 1; min-height: 0; margin-top: 15px; }
         
-        .chart-container {
-            position: relative;       /* 讓 Chart.js 正確縮放的關鍵 */
-            flex: 1;                  /* 圖表填滿右側剩餘高度 */
-            min-height: 0;
-            margin-top: 15px;
-        }
-        
-
-        /* 2. 卡片視覺樣式 */
-        .device-card {
-            background: #fff; border-radius: 8px; padding: 12px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; 
-            border-top: 5px solid #ccc; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;
-            transition: transform 0.1s, border-color 0.2s;
-            font-size: 0.9em; /* 卡片字體稍小以適應雙排 */
-        }
+        .device-card { background: #fff; border-radius: 8px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; border-top: 5px solid #ccc; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee; transition: transform 0.1s, border-color 0.2s; font-size: 0.9em; }
         .device-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .device-card.active-card { border-top-color: #007bff; background-color: #f8fbff; outline: 2px solid #007bff; }
-        
         .card-online { border-top-color: #28a745; }
         .card-pending { border-top-color: #ffc107; animation: pulse 1.5s infinite; }
         .card-error { border-top-color: #dc3545; animation: blink 1s infinite; }
-        
         .card-header { font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; display: flex; justify-content: space-between; font-size: 1.05em;}
         .card-row { display: flex; justify-content: space-between; margin-bottom: 4px; color: #555; }
         .card-val { font-weight: bold; color: #000; }
@@ -85,12 +73,8 @@
         @keyframes blink { 50% { opacity: 0.6; } }
         @keyframes pulse { 50% { box-shadow: 0 0 8px rgba(255, 193, 7, 0.4); } }
 
-        /* 3. 即時數據儀表板 */
         .dashboard { display: flex; justify-content: space-between; margin-top: 10px; gap: 15px;}
-        .data-box { 
-            background: #e9ecef; padding: 15px; border-radius: 8px; text-align: center; 
-            flex: 1; cursor: pointer; border: 2px solid transparent; transition: 0.2s;
-        }
+        .data-box { background: #e9ecef; padding: 15px; border-radius: 8px; text-align: center; flex: 1; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
         .data-box:hover { filter: brightness(0.95); }
         .data-box.active-volt { background: #e0f0ff; border-color: #007bff; }
         .data-box.active-curr { background: #ffe0e3; border-color: #dc3545; }
@@ -106,70 +90,79 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
-        input:checked + .slider { background-color: #28a745; } /* 開啟時顯示綠色 */
+        input:checked + .slider { background-color: #28a745; } 
         input:checked + .slider:before { transform: translateX(16px); }
     </style>
 </head>
 <body>
 
-<h1>多設備電池訊號監控</h1>
+<nav class="navbar">
+    <div class="navbar-brand">電池監控系統</div>
+    <div class="nav-links">
+        <a href="/" class="active">ESP32 監控中心</a>
+        <a href="/charger">充放電機控制面板</a>
+    </div>
+</nav>
 
-<div id="alert-banner">
-    <span id="alert-msg">警報：系統已暫停！</span>
-    <button onclick="resetSystem()" style="margin-left:15px; padding:5px; cursor:pointer;">重置系統</button>
-</div>
+<div class="main-container">
 
-<div class="main-layout">
-    
-    <div class="left-panel">
-        <h3 style="margin-top: 0;">設備列表</h3>
+    <h1>多設備電池訊號監控</h1>
+
+    <div id="alert-banner">
+        <span id="alert-msg">警報：系統已暫停！</span>
+        <button onclick="resetSystem()" style="margin-left:15px; padding:5px; cursor:pointer;">重置系統</button>
+    </div>
+
+    <div class="main-layout">
         
-        <div class="scrollable-container">
-            <div id="card-container" class="card-grid-2col">
-                <div style="color: #888; padding: 10px;">等待設備連線中...</div>
+        <div class="left-panel">
+            <h3 style="margin-top: 0;">設備列表</h3>
+            <div class="scrollable-container">
+                <div id="card-container" class="card-grid-2col">
+                    <div style="color: #888; padding: 10px;">等待設備連線中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div id="empty-state">
+                <h2>點選卡片以查看詳細數據與圖表</h2>
+            </div>
+
+            <div id="detail-view">
+                <div class="header-flex">
+                    <h2 style="margin: 0;">設備 <span id="current-view-title" style="color:#007bff;">--</span></h2>
+                    <button class="close-btn" onclick="closeDetailView()">關閉圖表</button>
+                </div>
+                
+                <div class="dashboard">
+                    <div class="data-box active-volt" id="box-volt" onclick="switchMetric('volt')">
+                        <div>電壓 (V)</div>
+                        <div class="data-value" id="val-volt" style="color:#007bff;">--</div>
+                    </div>
+                    <div class="data-box" id="box-curr" onclick="switchMetric('curr')">
+                        <div>電流 (A)</div>
+                        <div class="data-value" id="val-curr" style="color:#dc3545;">--</div>
+                    </div>
+                    <div class="data-box" id="box-temp" onclick="switchMetric('temp')">
+                        <div>溫度 (°C)</div>
+                        <div class="data-value" id="val-temp" style="color:#28a745;">--</div>
+                    </div>
+                    <div class="data-box" style="cursor: default;">
+                        <div>設備狀態</div>
+                        <div class="data-value" id="val-status" style="color:#6c757d; font-size: 1.4em; margin-top: 10px;">--</div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="multiChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="right-panel">
-        
-        <div id="empty-state">
-            <h2>點選卡片以查看詳細數據與圖表</h2>
-        </div>
-
-        <div id="detail-view">
-            <div class="header-flex">
-                <h2 style="margin: 0;">設備 <span id="current-view-title" style="color:#007bff;">--</span></h2>
-                <button class="close-btn" onclick="closeDetailView()">關閉圖表</button>
-            </div>
-            
-            <div class="dashboard">
-                <div class="data-box active-volt" id="box-volt" onclick="switchMetric('volt')">
-                    <div>電壓 (V)</div>
-                    <div class="data-value" id="val-volt" style="color:#007bff;">--</div>
-                </div>
-                <div class="data-box" id="box-curr" onclick="switchMetric('curr')">
-                    <div>電流 (A)</div>
-                    <div class="data-value" id="val-curr" style="color:#dc3545;">--</div>
-                </div>
-                <div class="data-box" id="box-temp" onclick="switchMetric('temp')">
-                    <div>溫度 (°C)</div>
-                    <div class="data-value" id="val-temp" style="color:#28a745;">--</div>
-                </div>
-                <div class="data-box" style="cursor: default;">
-                    <div>設備狀態</div>
-                    <div class="data-value" id="val-status" style="color:#6c757d; font-size: 1.4em; margin-top: 10px;">--</div>
-                </div>
-            </div>
-
-            <div class="chart-container">
-                <canvas id="multiChart"></canvas>
-            </div>
-        </div>
-        
-    </div>
-
 </div>
+
 <script>
     const deviceDataStore = {}; 
     let currentViewIp = null;   
@@ -183,16 +176,14 @@
         data: { labels: [], datasets: [{ label: '電壓 (V)', data: [], borderColor: '#007bff', backgroundColor: 'rgba(0, 123, 255, 0.1)', fill: true, tension: 0.3 }] },
         options: { 
             responsive: true, 
-            maintainAspectRatio: false, // 讓圖表自動填滿 flex 容器高度的關鍵
+            maintainAspectRatio: false, 
             scales: { y: { type: 'linear', display: true } },
-            animation: { duration: 0 } // 關閉動畫減少高頻率更新時的卡頓
+            animation: { duration: 0 } 
         }
     });
 
-    // 將 IP 轉為 HTML ID
     function safeId(ip) { return ip.replace(/\./g, '-'); }
 
- // 渲染左側卡片
     function renderCards() {
         const container = document.getElementById('card-container');
         if (Object.keys(knownDevices).length === 0) return;
@@ -209,14 +200,11 @@
             const data = deviceDataStore[ip] || { volt: ['--'], curr: ['--'], temp: ['--'], status: '-' };
             const lastIdx = Math.max(0, data.volt.length - 1);
 
-            // 判斷目前最後一筆狀態，決定開關是否預設為 ON (假設 '正常' 代表充電中/開啟)
-            const isChecked = (data.status === '正常') ? 'checked' : '';
-
-            // 判斷目前是要顯示「斷開」還是「重連」按鈕
-            const btnText = (status === 'stopped') ? '▶️ 喚醒' : '⏹️ 斷開';
+            const isChecked = (data.status === '正常' || data.status === '亮') ? 'checked' : '';
+            const btnText = (status === 'stopped') ? '啟動' : '終止';
             const btnAction = (status === 'stopped') ? 'start' : 'stop';
 
- container.innerHTML += `
+            container.innerHTML += `
                 <div class="device-card ${statusClass} ${isActive}" id="card-${safeId(ip)}" onclick="selectDevice('${ip}')">
                     <div class="card-header">
                         <span>${safeId(ip)}</span> 
@@ -244,51 +232,36 @@
         }
     }
 
-    // 處理斷開與重連的函數
     function toggleConnection(event, ip, action) {
-        event.stopPropagation(); // 避免點擊按鈕時觸發卡片的詳細圖表
-        
+        event.stopPropagation(); 
         const actionName = (action === 'stop') ? '安全斷開' : '重新喚醒';
         if(confirm(`確定要 ${actionName} 設備 ${ip} 嗎？`)) {
             fetch(`/set_device_state?ip=${ip}&state=${action}`)
-                .then(response => {
-                    if (!response.ok) alert("指令發送失敗");
-                });
+                .then(response => { if (!response.ok) alert("指令發送失敗"); });
         }
     }
 
-    // 發送開關切換指令給後端
     function toggleCharge(ip, isTurnedOn) {
         const state = isTurnedOn ? 1 : 0;
-        console.log(`準備將設備 ${ip} 狀態切換為: ${state}`);
-        
-        // 呼叫 Flask 後端的 API (待後端實作)
         fetch(`/toggle_charge?ip=${ip}&state=${state}`)
             .then(response => {
                 if (!response.ok) throw new Error("網路回應錯誤");
-                console.log(`指令已發送至後端: ${ip} -> ${state}`);
             })
             .catch(error => {
-                console.error("指令發送失敗:", error);
                 document.getElementById(`toggle-${safeId(ip)}`).checked = !isTurnedOn;
                 alert("控制指令發送失敗，請檢查連線。");
             });
     }
 
-    // 點擊卡片切換畫面
     function selectDevice(ip) {
         currentViewIp = ip;
         document.getElementById('current-view-title').innerText = ip;
-        
-        // 隱藏右側的提示，顯示真實數據面板
         document.getElementById('empty-state').style.display = 'none';
         document.getElementById('detail-view').classList.add('active');
-        
         renderCards(); 
         updateDashboardUI();
     }
 
-    // 關閉右側視圖
     function closeDetailView() {
         currentViewIp = null;
         document.getElementById('empty-state').style.display = 'flex';
@@ -296,7 +269,6 @@
         renderCards(); 
     }
 
-    // 切換電壓/電流/溫度圖表
     function switchMetric(metric) {
         currentMetric = metric;
         const dataset = multiChart.data.datasets[0];
@@ -335,7 +307,6 @@
         multiChart.update();
     }
 
-    // Socket.io 通訊
     const socket = io();
 
     socket.on('device_list_update', function(devices) {
@@ -371,9 +342,7 @@
             document.getElementById(`c-temp-${sid}`).innerText = t;
 
             const toggleElement = document.getElementById(`toggle-${sid}`);
-            if (toggleElement) {
-                toggleElement.checked = (signals.Status === 1);
-            }
+            if (toggleElement) toggleElement.checked = (signals.Status === 1);
         }
 
         if (ip === currentViewIp) updateDashboardUI();
@@ -397,6 +366,45 @@
     function resetSystem() {
         if (confirm("這將清除所有狀態並允許設備重新連線，確定？")) fetch('/reset').then(() => location.reload());
     }
+
+    // 抓取 CSV 歷史紀錄並重建資料庫
+    fetch('/get_history')
+        .then(res => res.json())
+        .then(data => {
+            data.forEach(row => {
+                const ip = row.ip;
+                
+                // 如果這個 IP 還沒有在資料庫裡，就幫它建一個空陣列
+                if (!deviceDataStore[ip]) {
+                    deviceDataStore[ip] = { labels: [], volt: [], curr: [], temp: [], status: '-' };
+                }
+
+                const store = deviceDataStore[ip];
+                
+                // 將 CSV 原始數據 (mV, mA) 轉換回 V 和 A
+                const v = (row.Volt_mV / 1000.0).toFixed(2);
+                const a = (row.Curr_mA / 1000.0).toFixed(2);
+                const t = row.Temp_C;
+                const s = row.Status === '1' ? '亮' : '滅';
+
+                // 保持最多 30 筆資料
+                if (store.labels.length > 30) {
+                    store.labels.shift(); store.volt.shift(); store.curr.shift(); store.temp.shift();
+                }
+                
+                store.labels.push(row.timestamp);
+                store.volt.push(v);
+                store.curr.push(a);
+                store.temp.push(t);
+                store.status = s;
+            });
+
+            // 如果目前已經有選中的設備，更新畫面
+            if (currentViewIp) {
+                updateDashboardUI();
+            }
+        })
+        .catch(err => console.error("無法抓取歷史紀錄:", err));
 </script>
 </body>
 </html>

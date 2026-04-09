@@ -3,117 +3,184 @@
 <head>
     <meta charset="UTF-8">
     <title>充放電機控制面板</title>
-    <style>
-        body { font-family: sans-serif; background-color: #f4f4f9; padding: 0px; margin: 0 }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        
-        .dashboard { display: flex; gap: 20px; margin-top: 20px; }
-        .data-box { flex: 1; background: #e9ecef; padding: 20px; border-radius: 8px; text-align: center; }
-        .data-value { font-size: 2.5em; font-weight: bold; margin-top: 10px; }
-        
-        .control-panel { margin-top: 30px; padding-top: 20px; border-top: 1px dashed #ccc; }
-        button { padding: 10px 20px; font-size: 1.1em; border: none; border-radius: 5px; cursor: pointer; background: #007bff; color: white; margin-right: 10px; }
-        button:hover { background: #0056b3; }
-        
-
-        .navbar {
-            background-color: #343a40;
-            padding: 15px 25px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            color: white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            flex-shrink: 0; /* 防止導覽列被壓縮 */
-        }
-        .navbar-brand { font-size: 1.5em; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
-        .nav-links { display: flex; gap: 15px; }
-        .nav-links a {
-            color: #adb5bd;
-            text-decoration: none;
-            font-size: 1.1em;
-            padding: 8px 15px;
-            border-radius: 5px;
-            transition: all 0.3s;
-            font-weight: bold;
-        }
-        .nav-links a:hover { color: white; background-color: #495057; }
-        .nav-links a.active { color: white; background-color: #007bff; } 
-    </style>
+    <!-- 引入外部 CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/charger.css') }}">
 </head>
 <body>
 
 <nav class="navbar">
     <div class="navbar-brand">電池監控系統</div>
     <div class="nav-links">
-        <a href="/" >ESP32 監控中心</a>
+        <a href="/">ESP32 監控中心</a>
         <a href="/charger" class="active">充放電機控制面板</a>
     </div>
 </nav>
 
-<div class="container">
-    <h1>ThinkPower 充放電機控制面板</h1>
-    
-    <div style="text-align: right; color: #666;">
-        設備狀態: <strong id="dev-status" style="color: gray;">連線中...</strong>
+<div class="main-wrapper">
+    <div class="left-panel">
+        <h1>ThinkPower 充放電機控制面板</h1>
+        
+        <div style="text-align: right; color: #666;">
+            設備狀態: <strong id="dev-status" style="color: gray;">連線中...</strong>
+        </div>
+
+        <div class="dashboard">
+            <div class="data-box">
+                <div style="font-size: 1.2em; color: #555;">即時電壓 (mV)</div>
+                <div class="data-value" id="val-volt" style="color: #007bff;">--</div>
+            </div>
+            <div class="data-box">
+                <div style="font-size: 1.2em; color: #555;">即時電流 (mA)</div>
+                <div class="data-value" id="val-curr" style="color: #dc3545;">--</div>
+            </div>
+            <div class="data-box">
+                <div style="font-size: 1.2em; color: #555;">功率 (mW)</div>
+                <div class="data-value" id="val-power" style="color: #007bff;">--</div>
+            </div>
+            <br/>
+            <div class="data-box">
+                <div style="font-size: 1.2em; color: #555;">充入量 (mAh):</div>
+                <div class="data-value" id="val-chg-mah" style="color: #007bff;">--</div>
+            </div>
+            <div class="data-box">
+                <div style="font-size: 1.2em; color: #555;">放出量 (mAh):</div>
+                <div class="data-value" id="val-dis-mah" style="color: #007bff;">--</div>
+            </div>
+            <div class="data-box" style="background: #e2e3e5;">
+                <div style="font-size: 1.2em; color: #555;">目前步序 (Step)</div>
+                <div class="data-value" id="val-step" style="color: #28a745;">--</div>
+            </div>
+            <div class="data-box" style="background: #e2e3e5;">
+                <div style="font-size: 1.2em; color: #555;">目前狀態 (mode)</div>
+                <div class="data-value" id="val-mode" style="color: #28a745;">--</div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <!-- 區塊 1：充電 (Charge) -->
+            <div class="action-section" id="section-chg">
+                <button class="activate-btn" id="btn-activate-chg" onclick="activateSection('chg')">充電</button>
+                <div class="block-content" id="content-chg" style="display: none;">
+                    <div>
+                        <button class="mode-btn" onclick="setMode(this, 'MODE:SET CCC')">CCC (定電流充電)</button>
+                        <button class="mode-btn" onclick="setMode(this, 'MODE:SET CVC')">CVC (定電壓充電)</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="volt-chg" placeholder="設定電壓目標 (mV)">
+                        <button id="volt-btn-chg" onclick="sendCommand(`VOLT:SET ${document.getElementById('volt-chg').value}`)" style="background: #17a2b8; margin-bottom: 0;">設定充電電壓</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="curr-chg" placeholder="設定充電電流 (mA)">  
+                        <button id="curr-btn-chg" onclick="sendCommand(`CURR:SET ${document.getElementById('curr-chg').value}`)" style="background: #17a2b8; margin-bottom: 0;">設定充電電流</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="volt-max-chg" placeholder="最大結束電壓 (mV)">  
+                        <button id="volt-max-btn" onclick="sendCommand(`VOLT:TRIGgered ${document.getElementById('volt-max-chg').value},>=`)" style="background: #6f42c1; margin-bottom: 0;">設定結束電壓最大值</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="curr-trig-chg" placeholder="設定結束電流 (mA)">  
+                        <button id="curr-trig-btn-chg" onclick="sendCommand(`CURR:TRIGgered ${document.getElementById('curr-trig-chg').value}`)" style="background: #6f42c1; margin-bottom: 0;">設定結束電流</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="time-chg" placeholder="執行時間 (秒)" min="1">
+                    </div>
+                    <div class="append-container" id="append-container-chg"></div>
+                </div>
+            </div>
+
+            <!-- 區塊 2：放電 (Discharge) -->
+            <div class="action-section" id="section-dis">
+                <button class="activate-btn" id="btn-activate-dis" onclick="activateSection('dis')">放電</button>
+                <div class="block-content" id="content-dis" style="display: none;">
+                    <div>
+                        <button class="mode-btn" onclick="setMode(this, 'MODE:SET CCD')">CCD (定電流放電)</button>
+                        <button class="mode-btn" onclick="setMode(this, 'MODE:SET CVD')">CVD (定電壓放電)</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="volt-dis" placeholder="設定電壓目標 (mV)">
+                        <button id="volt-btn-dis" onclick="sendCommand(`VOLT:SET ${document.getElementById('volt-dis').value}`)" style="background: #17a2b8; margin-bottom: 0;">設定放電電壓</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="curr-dis" placeholder="設定放電電流 (mA)">  
+                        <button id="curr-btn-dis" onclick="sendCommand(`CURR:SET ${document.getElementById('curr-dis').value}`)" style="background: #17a2b8; margin-bottom: 0;">設定放電電流</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="volt-min-dis" placeholder="最小結束電壓 (mV)">  
+                        <button id="volt-min-btn" onclick="sendCommand(`VOLT:TRIGgered ${document.getElementById('volt-min-dis').value},<=`)" style="background: #6f42c1; margin-bottom: 0;">設定結束電壓最小值</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="curr-trig-dis" placeholder="設定結束電流 (mA)">  
+                        <button id="curr-trig-btn-dis" onclick="sendCommand(`CURR:TRIGgered ${document.getElementById('curr-trig-dis').value}`)" style="background: #6f42c1; margin-bottom: 0;">設定結束電流</button> 
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="time-dis" placeholder="執行時間 (秒)" min="1">
+                    </div>
+                    <div class="append-container" id="append-container-dis"></div>
+                </div>
+            </div>
+
+            <!-- 區塊 3：休息 (Rest) -->
+            <div class="action-section" id="section-rest">
+                <button class="activate-btn" id="btn-activate-rest" onclick="activateSection('rest')">休息</button>
+                <div class="block-content" id="content-rest" style="display: none;">
+                    <div>
+                        <button class="mode-btn" onclick="setMode(this, 'MODE:SET REST', true)">REST (休息) 模式</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="time-rest" placeholder="休息時間 (秒)" min="1">
+                    </div>
+                    <div class="append-container" id="append-container-rest"></div>
+                </div>
+            </div>
+
+            <!-- 全局唯一的 AppendChild 目標按鈕 -->
+            <button id="shared-add-btn" onclick="addStepToSchedule()" style="display: none; background: #28a745; font-weight: bold; margin-bottom: 0;">✚ 將此區塊參數加入排程</button>
+
+            <!-- 全域設定與控制區 -->
+            <div class="global-controls">
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <input type="number" id="ovp-input" placeholder="OVP 保護 (mV)">  
+                    <input type="number" id="uvp-input" placeholder="UVP 保護 (mV)" value="0">  
+                    <button id="volt-prot-btn" onclick="sendCommand(`VOLT:PROTection ${document.getElementById('ovp-input').value},${document.getElementById('uvp-input').value}`)" style="background: #e83e8c; margin-bottom: 0;">設定硬體電壓保護</button> 
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button id="btn-on" onclick="startOutputWithTimer()" style="flex: 1; background: #28a745; font-weight: bold; padding: 12px 20px; margin: 0;">▶ 單步開啟目前區塊 (ON)</button>
+                    <button id="btn-off" onclick="forceStopOutput()" style="flex: 1; background: #dc3545; font-weight: bold; padding: 12px 20px; margin: 0;">■ 關閉輸出 (OFF)</button>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="btn-run-schedule" onclick="runFullSchedule()" style="flex: 1; background: #007bff; font-weight: bold; padding: 12px 20px; margin: 0;">▶ 執行右側排程</button>
+                    <input type="file" id="script-file-input" accept=".json" style="display: none;" onchange="handleLocalScriptUpload(event)">
+                    <button onclick="document.getElementById('script-file-input').click()" style="flex: 1; background: #fd7e14; font-weight: bold; padding: 12px 20px; margin: 0;">📂 上傳本地腳本 (JSON)</button>
+                </div>
+
+                <br>
+                <span id="output-countdown" style="font-size: 1.2em; font-weight: bold; color: #28a745; margin-top: 10px; display: inline-block;"></span>
+            </div>
+
+        </div>
     </div>
 
-    <div class="dashboard">
-        <div class="data-box">
-            <div style="font-size: 1.2em; color: #555;">即時電壓 (mV)</div>
-            <div class="data-value" id="val-volt" style="color: #007bff;">--</div>
+    <div class="right-panel">
+        <h2 style="margin-top: 0; color: #333; border-bottom: 2px solid #17a2b8; padding-bottom: 10px;">測試排程列表</h2>
+        
+        <div class="schedule-list" id="schedule-container">
+            <div style="text-align: center; color: #aaa; margin-top: 50px;">目前沒有任何步驟<br>請在左側設定後點擊「加入排程」</div>
         </div>
-        <div class="data-box">
-            <div style="font-size: 1.2em; color: #555;">即時電流 (mA)</div>
-            <div class="data-value" id="val-curr" style="color: #dc3545;">--</div>
+        
+        <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <button onclick="clearSchedule()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer;">清空排程</button>
+            <span id="total-time-display" style="font-weight: bold; color: #555;">總需時間: 0 秒</span>
         </div>
-    </div>
-
-    <div class="control-panel">
-        <h3>控制指令</h3>
-        <button onclick="sendCommand('OUTP ON')">開啟輸出 (ON)</button>
-        <button onclick="sendCommand('OUTP OFF')" style="background: #dc3545;">關閉輸出 (OFF)</button>
-        <button onclick="sendCommand('*IDN?')" style="background: #28a745;">查詢設備資訊</button>        
     </div>
 </div>
 
-<script>
-    // 1. 定期抓取儀器數據 (每 2 秒更新一次)
-    function fetchChargerData() {
-        fetch('/api/charger/data')
-            .then(response => {
-                if (!response.ok) throw new Error("設備離線");
-                return response.json();
-            })
-            .then(data => {
-                document.getElementById('dev-status').innerText = "連線正常 🟢";
-                document.getElementById('dev-status').style.color = "green";
-                document.getElementById('val-volt').innerText = data.volt;
-                document.getElementById('val-curr').innerText = data.curr;
-            })
-            .catch(error => {
-                document.getElementById('dev-status').innerText = "連線失敗 🔴";
-                document.getElementById('dev-status').style.color = "red";
-                document.getElementById('val-volt').innerText = "--";
-                document.getElementById('val-curr').innerText = "--";
-            });
-    }
-
-    // 2. 發送控制指令
-    function sendCommand(cmd) {
-        fetch(`/api/charger/cmd?cmd=${encodeURIComponent(cmd)}`)
-            .then(res => res.json())
-            .then(data => {
-                alert(`指令已發送。\n儀器回應: ${data.response}`);
-            });
-    }
-
-    // 網頁載入後，立刻抓取一次資料，然後每 2000 毫秒(2秒)抓一次
-    fetchChargerData();
-    setInterval(fetchChargerData, 2000);
-</script>
+<!-- 引入拆分後的 JS 模組 (注意順序：從底層到高層) -->
+<script src="{{ url_for('static', filename='js/charger-api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charger-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charger-sche.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charger-main.js') }}"></script>
 
 </body>
 </html>

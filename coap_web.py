@@ -271,29 +271,86 @@ def charger_page():
     """負責載入充放電機的專屬控制面板網頁"""
     return render_template('charger.html')
 
+mah_tracker = {
+    "last_hardware_mah": 0.0,
+    "total_charge_mah": 0.0,
+    "total_discharge_mah": 0.0
+}
+
 @app.route('/api/charger/data')
 def get_charger_data():
     """提供前端 Ajax 抓取即時數據的 API"""
-    volt = charger.query("MEAS:VOLT?")
-    curr = charger.query("MEAS:CURR?")
+    global mah_tracker
+    response_str = charger.query("MEASure:ALL?")
+    data_parts = [p.strip() for p in response_str.split(',')]
     
-    # 簡單防錯機制
-    if volt == "ERROR" or curr == "ERROR":
-        return jsonify({"status": "offline", "volt": "--", "curr": "--"}), 503
-        
-    return jsonify({
-        "status": "online",
-        "volt": volt,
-        "curr": curr
-    })
+    # 防錯機制 2：確保陣列長度足夠，避免 IndexError 導致系統崩潰
+    if len(data_parts) >= 14:
+            raw_mode = data_parts[11].strip().upper()
+            
+            # --- MAH 分流計算邏輯 ---
+            try:
+                current_hardware_mah = float(data_parts[6])
+            except ValueError:
+                current_hardware_mah = 0.0 # 防呆：萬一機台傳回來的不是數字
+                
+            delta_mah = current_hardware_mah - mah_tracker["last_hardware_mah"]
+            
+            # 如果機台數值歸零 (換腳本時)，差額就是當下的數值
+            if delta_mah < 0:
+                delta_mah = current_hardware_mah
+                
+            # 將差額存入對應的帳戶
+            if raw_mode in ["CCC", "CVC", "CPC"]:
+                mah_tracker["total_charge_mah"] += delta_mah
+            elif raw_mode in ["CCD", "CVD", "CPD"]:
+                mah_tracker["total_discharge_mah"] += delta_mah
+                
+            mah_tracker["last_hardware_mah"] = current_hardware_mah
+            
+            # --- 狀態文字翻譯邏輯 ---
+            action_text = raw_mode
+            if raw_mode in ["CCC", "CVC", "CPC"]:
+                action_text = f"充電 ({raw_mode})"
+            elif raw_mode in ["CCD", "CVD", "CPD"]:
+                action_text = f"放電 ({raw_mode})"
+            elif raw_mode == "REST":
+                action_text = "休息 (REST)"
+            else:
+                action_text = raw_mode
+
+            # 成功解析，回傳完整數據 (請確認這裡的 return 是在 if 區塊內)
+            return jsonify({
+                "status": "online",
+                "volt": f"{float(data_parts[2]):.3f}",      
+                "curr": f"{float(data_parts[3]):.3f}",      
+                "power": f"{float(data_parts[4]):.3f}", 
+                "charge_mah": round(mah_tracker["total_charge_mah"], 3),
+                "discharge_mah": round(mah_tracker["total_discharge_mah"], 3),
+                "step": data_parts[8],      
+                "mode": action_text       
+            }), 200
+    else:
+        # 如果長度不到 14，代表資料格式不對或儀器還在開機
+        return jsonify({
+            "status": "offline", 
+            "volt": "--", 
+            "curr": "--",
+            "power": "--",
+            "mah": "--",
+            "step": "--",
+            "mode": "--"
+        }), 503
+
+
+
 
 @app.route('/api/charger/cmd')
 def send_charger_cmd():
     """提供前端發送任意控制指令的 API"""
     cmd = request.args.get('cmd')
     if not cmd:
-        return jsonify({"error": "No command provided"}), 400
-        
+        return jsonify({"error": "No command provided"}), 400 
     res = charger.query(cmd)
     return jsonify({"response": res})
 
